@@ -2,6 +2,7 @@ package com.example.lightweather.activity;
 
 import java.util.ArrayList;
 import java.util.List;
+
 import com.example.lightweather.R;
 import com.example.lightweather.db.WeatherDataBase;
 import com.example.lightweather.model.City;
@@ -10,10 +11,13 @@ import com.example.lightweather.model.Province;
 import com.example.lightweather.util.HttpCallbackListener;
 import com.example.lightweather.util.HttpUtil;
 import com.example.lightweather.util.Utility;
+
 import android.app.Activity;
 import android.app.ProgressDialog;
-import android.app.DownloadManager.Query;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.text.TextUtils;
 import android.view.View;
 import android.view.Window;
@@ -41,11 +45,22 @@ public class ChooseAreaActivity extends Activity {
 	private List<City> cityList;
 	private List<County> countyList;
 	private ProgressDialog progressDialog;
+	private boolean isFromWeatherActivity;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		// TODO 自动生成的方法存根
 		super.onCreate(savedInstanceState);
+		isFromWeatherActivity = getIntent().getBooleanExtra(
+				"from_weather_activity", false);
+		SharedPreferences prefs = PreferenceManager
+				.getDefaultSharedPreferences(this);
+		if (prefs.getBoolean("city_selected", false) && !isFromWeatherActivity) {
+			Intent intent = new Intent(this, WeatherActivity.class);
+			startActivity(intent);
+			finish();
+			return;
+		}
 		requestWindowFeature(Window.FEATURE_NO_TITLE);
 		setContentView(R.layout.choose_area);
 		listView = (ListView) findViewById(R.id.list_view);
@@ -56,14 +71,21 @@ public class ChooseAreaActivity extends Activity {
 		weatherDataBase = WeatherDataBase.getInstance(this);
 		listView.setOnItemClickListener(new OnItemClickListener() {
 			@Override
-			public void onItemClick(AdapterView<?> parent, View view,
-					int index, long id) {
+			public void onItemClick(AdapterView<?> arg0, View view, int index,
+					long arg3) {
 				if (currentLevel == LEVEL_PROVINCE) {
 					selectedProvince = provinceList.get(index);
 					queryCities();
 				} else if (currentLevel == LEVEL_CITY) {
 					selectedCity = cityList.get(index);
 					queryCounties();
+				} else if (currentLevel == LEVEL_COUNTY) {
+					String countyCode = countyList.get(index).getCountyCode();
+					Intent intent = new Intent(ChooseAreaActivity.this,
+							WeatherActivity.class);
+					intent.putExtra("county_code", countyCode);
+					startActivity(intent);
+					finish();
 				}
 			}
 		});
@@ -86,24 +108,8 @@ public class ChooseAreaActivity extends Activity {
 		}
 	}
 
-	private void queryCounties() {
-		countyList = weatherDataBase.loadCouties(selectedCity.getId());
-		if (countyList.size() > 0) {
-			dataList.clear();
-			for (County county : countyList) {
-				dataList.add(county.getCountyName());
-			}
-			adapter.notifyDataSetChanged();
-			listView.setSelection(0);
-			titleText.setText(selectedCity.getCityName());
-			currentLevel = LEVEL_COUNTY;
-		} else {
-			queryFromServer(selectedCity.getCityCode(), "county");
-		}
-	}
-
 	private void queryCities() {
-		cityList = weatherDataBase.loadCIties(selectedProvince.getId());
+		cityList = weatherDataBase.loadCities(selectedProvince.getId());
 		if (cityList.size() > 0) {
 			dataList.clear();
 			for (City city : cityList) {
@@ -118,11 +124,26 @@ public class ChooseAreaActivity extends Activity {
 		}
 	}
 
+	private void queryCounties() {
+		countyList = weatherDataBase.loadCounties(selectedCity.getId());
+		if (countyList.size() > 0) {
+			dataList.clear();
+			for (County county : countyList) {
+				dataList.add(county.getCountyName());
+			}
+			adapter.notifyDataSetChanged();
+			listView.setSelection(0);
+			titleText.setText(selectedCity.getCityName());
+			currentLevel = LEVEL_COUNTY;
+		} else {
+			queryFromServer(selectedCity.getCityCode(), "county");
+		}
+	}
+
 	private void queryFromServer(final String code, final String type) {
 		String address;
 		if (!TextUtils.isEmpty(code)) {
-			address = "http://www.weather.com.cn/data/list3/city" + code
-					+ ".xml";
+			address = "http://www.weather.com.cn/data/list3/city" + code + ".xml";
 		} else {
 			address = "http://www.weather.com.cn/data/list3/city.xml";
 		}
@@ -142,6 +163,7 @@ public class ChooseAreaActivity extends Activity {
 							response, selectedCity.getId());
 				}
 				if (result) {
+					// 通过runOnUiThread()方法回到主线程处理逻辑
 					runOnUiThread(new Runnable() {
 						@Override
 						public void run() {
@@ -157,7 +179,6 @@ public class ChooseAreaActivity extends Activity {
 					});
 				}
 			}
-
 			@Override
 			public void onError(Exception e) {
 				runOnUiThread(new Runnable() {
@@ -194,6 +215,10 @@ public class ChooseAreaActivity extends Activity {
 		} else if (currentLevel == LEVEL_CITY) {
 			queryProvinces();
 		} else {
+			if (isFromWeatherActivity) {
+				Intent intent = new Intent(this, WeatherActivity.class);
+				startActivity(intent);
+			}
 			finish();
 		}
 	}
